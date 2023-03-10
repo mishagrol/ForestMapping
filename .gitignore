@@ -4,8 +4,9 @@ __pycache__/
 *$py.class
 rasters/
 # C extensions
+.vscode
 *.so
-
+*.tmp
 /rasters/*tiff
 # Distribution / packaging
 .Python
