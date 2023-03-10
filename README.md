@@ -24,6 +24,23 @@ Install python packages
 * jupyter
 
 
+## How to run in Jupyter? Easy! 
+> requirement - Docker 🐳
+>
+1. Clone repository to your local machine 
+`git clone https://github.com/mishagrol/ForestMapping.git` 
+
+2. Go to folder 
+
+`cd ForestMapping`
+
+3. Run Jupyter in Docker 
+`bash run_in_docker.sh`
+
+4. Open Jupyter in browser at `localhost:8890`, token is `SecretToken` 
+
+
+
 ## Data 
 
 ### Inventory plots data
