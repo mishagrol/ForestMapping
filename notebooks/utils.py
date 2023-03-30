@@ -36,9 +36,11 @@ from sklearn.metrics import make_scorer
 
 from imblearn.over_sampling import SMOTE
 from imblearn.combine import SMOTEENN, SMOTETomek
+from yellowbrick.cluster import KElbowVisualizer
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from scipy.stats import loguniform
-from xgboost import XGBClassifier
+
+# from xgboost import XGBClassifier
 
 
 class Dataset:
@@ -663,3 +665,58 @@ def get_models(class_weights: dict) -> list:
         )
         #                    XGBClassifier(n_jobs=-1, tree_method='gpu_hist', predictor='gpu_predictor', booster='gblinear', eta=0.3, gamma='auto', max_depth=20)
     ]
+
+
+# attaching clusters to each row according to the number of plot
+# attaching clusters to each row according to the number of plot
+def get_cluster_pixels(data:pd.DataFrame, key: int = 1, correlation_threshold:float=0.7)->pd.DataFrame: 
+    attmpt = data[data.key == key]
+    attmpt_c = attmpt.drop(columns = ['key', 'class']).corr().abs() #'index',
+    #attmpt.corr().style.background_gradient(cmap="Blues")
+
+    # Select upper triangle of correlation matrix
+    upper = attmpt_c.where(np.triu(np.ones(attmpt_c.shape), k=1).astype(bool))
+
+    # Find features with correlation greater than 0.95
+    to_drop = [column for column in upper.columns if any(upper[column] > correlation_threshold)]
+
+    # Drop features 
+    attmpt_ = attmpt.drop(to_drop, axis=1)#, inplace=True)
+
+    #preprocessing of the data
+    #from sklearn.preprocessing import StandardScaler
+    scaler = StandardScaler()
+    scaler.fit(attmpt_.drop(columns = ['key', 'class']))#'index',
+    scaled_data = scaler.transform(attmpt_.drop(columns = ['key', 'class']))#'index',
+    #from yellowbrick.cluster import KElbowVisualizer
+    model = KMeans(n_init=10)
+    # k is range of number of clusters.
+    visualizer = KElbowVisualizer(model, k=(1,8), timings= True)
+    visualizer.fit(scaled_data)        # Fit data to visualizer
+    plt.close()
+    elbow_value = visualizer.elbow_value_
+    if elbow_value == None:
+        elbow_value = 2
+    kmeans_model = KMeans(n_clusters = elbow_value, random_state=100) # elbow_value_ == number of clusters
+    kmeans_model.fit(scaled_data)
+
+    attmpt["clusters"] = kmeans_model.labels_
+    attmpt.clusters.value_counts().reset_index()#.duplicated(subset=['clusters'])#.iloc[0,0]
+    
+    return attmpt
+
+##selection of rows related to most abundant clusters
+
+def get_selection(attmpt:pd.DataFrame)->pd.DataFrame:
+    
+    cluster_stat = attmpt.clusters.value_counts().to_dict()
+    cluster_count = list(cluster_stat.values())
+    cluster_non_equal = cluster_count[0]>cluster_count[1]
+    if cluster_non_equal:
+        target_cluster = list(cluster_stat.keys())[0]
+        mask = attmpt.clusters == target_cluster
+        data_grol = attmpt.loc[mask]
+    else: 
+        print('equal cluster')
+        data_grol = pd.DataFrame()
+    return data_grol
