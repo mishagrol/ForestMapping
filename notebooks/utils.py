@@ -5,9 +5,9 @@ from rasterio.mask import mask as crop_mask
 import os, wget
 from collections import Counter
 import numpy as np
-import verde as vd
 from shapely.geometry import box
-from imblearn.under_sampling import RandomUnderSampler
+
+# from imblearn.under_sampling import RandomUnderSampler
 from tqdm.notebook import tqdm
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -16,7 +16,8 @@ import datetime as dt
 
 from shapely import affinity
 from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
+
+# from sklearn.preprocessing import StandardScaler
 from sklearn import model_selection
 from sklearn.linear_model import LogisticRegression, RidgeClassifier
 from sklearn.svm import SVC
@@ -34,8 +35,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import make_scorer
 
-from imblearn.over_sampling import SMOTE
-from imblearn.combine import SMOTEENN, SMOTETomek
+# from imblearn.over_sampling import SMOTE
+# from imblearn.combine import SMOTEENN, SMOTETomek
 from yellowbrick.cluster import KElbowVisualizer
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from scipy.stats import loguniform
@@ -64,7 +65,7 @@ class Dataset:
         self.path_to_tiff_file = filename
         return filename
 
-    def normalize(self, band: np.ndarray) -> np.ndarray:
+    def normalize(self, band: pd.Series) -> pd.Series:
         band_min, band_max = (band.min(), band.max())
         return (band - band_min) / ((band_max - band_min))
 
@@ -103,6 +104,7 @@ class Dataset:
             "земля": "Soil",
             "болото": "Swamp",
             "вода": "Water body",
+            "поселения": "Settlements",
         }
         mask = gdf["t_Class"] > 7
         for key, value in non_forest.items():
@@ -169,6 +171,7 @@ class Dataset:
             "EVI",
             "MSAVI",
             "NDRE",
+            "FCI",
         ]  # CLM
         if len(self.dates_images) == 0:
             return col_names
@@ -249,8 +252,8 @@ class Dataset:
         print(" -- Done ✅")
         mask = df_terrain["wetnessindex"] < 0
         df_terrain.loc[mask, "wetnessindex"] = 0
-        for col in self.terrain_cols:
-            df_terrain.loc[:, col] = self.normalize(df_terrain[col])
+        # for col in self.terrain_cols:
+        #     df_terrain.loc[:, col] = self.normalize(df_terrain[col])
         return df_indices_field, df_terrain
 
     def get_SVI(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -261,6 +264,7 @@ class Dataset:
         df.loc[:, "NDRE"] = self.NDRE(red_far=red_far, nir=nir)
         df.loc[:, "MSAVI"] = self.MSAVI(red=red, nir=nir)
         df.loc[:, "EVI"] = self.EVI(red=red, nir=nir)
+        df.loc[:, "FCI"] = self.FCI(red=red, nir=nir)
         svi_cols = self.get_svi_cols()
         svi_cols.extend(["key", "class"])
         return df[svi_cols]
@@ -338,6 +342,10 @@ class Dataset:
             (nir + red_far).apply(lambda x: 0.000001 if x == 0 else x)
         )
         return ndre
+
+    def FCI(self, red: pd.Series, nir: pd.Series):
+        fci = np.sqrt(red * nir)
+        return fci
 
     def MSAVI(self, red: pd.Series, nir: pd.Series):
         msavi = (2 * nir + 1 - ((2 * nir + 1) ** 2 - 8 * (nir - red)) ** (1 / 2)) / 2
@@ -504,11 +512,11 @@ def resample_forest(df: pd.DataFrame):
     return df
 
 
-def scale_normalize(df: pd.DataFrame) -> pd.DataFrame:
-    _X = df.iloc[:, :-2]
-    scaled = StandardScaler().fit_transform(_X)
-    df.iloc[:, :-2] = scaled
-    return df
+# def scale_normalize(df: pd.DataFrame) -> pd.DataFrame:
+#     _X = df.iloc[:, :-2]
+#     scaled = StandardScaler().fit_transform(_X)
+#     df.iloc[:, :-2] = scaled
+#     return df
 
 
 def get_metric(base_classfiers: list, y_test: np.ndarray, X_test: np.ndarray):
@@ -669,54 +677,99 @@ def get_models(class_weights: dict) -> list:
 
 # attaching clusters to each row according to the number of plot
 # attaching clusters to each row according to the number of plot
-def get_cluster_pixels(data:pd.DataFrame, key: int = 1, correlation_threshold:float=0.7)->pd.DataFrame: 
+def get_cluster_pixels(
+    data: pd.DataFrame, key: int = 1, correlation_threshold: float = 0.7
+) -> pd.DataFrame:
     attmpt = data[data.key == key]
-    attmpt_c = attmpt.drop(columns = ['key', 'class']).corr().abs() #'index',
-    #attmpt.corr().style.background_gradient(cmap="Blues")
+    attmpt_c = attmpt.drop(columns=["key", "class"]).corr().abs()  #'index',
+    # attmpt.corr().style.background_gradient(cmap="Blues")
 
     # Select upper triangle of correlation matrix
     upper = attmpt_c.where(np.triu(np.ones(attmpt_c.shape), k=1).astype(bool))
 
     # Find features with correlation greater than 0.95
-    to_drop = [column for column in upper.columns if any(upper[column] > correlation_threshold)]
+    to_drop = [
+        column for column in upper.columns if any(upper[column] > correlation_threshold)
+    ]
 
-    # Drop features 
-    attmpt_ = attmpt.drop(to_drop, axis=1)#, inplace=True)
+    # Drop features
+    attmpt_ = attmpt.drop(to_drop, axis=1)  # , inplace=True)
 
-    #preprocessing of the data
-    #from sklearn.preprocessing import StandardScaler
-    scaler = StandardScaler()
-    scaler.fit(attmpt_.drop(columns = ['key', 'class']))#'index',
-    scaled_data = scaler.transform(attmpt_.drop(columns = ['key', 'class']))#'index',
-    #from yellowbrick.cluster import KElbowVisualizer
+    # preprocessing of the data
+    # from sklearn.preprocessing import StandardScaler
+    # scaler = StandardScaler()
+    # scaler.fit(attmpt_.drop(columns=["key", "class"]))  #'index',
+    scaled_data = attmpt_.drop(columns=["key", "class"])  #'index',
+    # from yellowbrick.cluster import KElbowVisualizer
     model = KMeans(n_init=10)
     # k is range of number of clusters.
-    visualizer = KElbowVisualizer(model, k=(1,8), timings= True)
-    visualizer.fit(scaled_data)        # Fit data to visualizer
+    visualizer = KElbowVisualizer(model, k=(1, 8), timings=True)
+    visualizer.fit(scaled_data)  # Fit data to visualizer
     plt.close()
     elbow_value = visualizer.elbow_value_
     if elbow_value == None:
         elbow_value = 2
-    kmeans_model = KMeans(n_clusters = elbow_value, random_state=100) # elbow_value_ == number of clusters
+    kmeans_model = KMeans(
+        n_clusters=elbow_value, random_state=100
+    )  # elbow_value_ == number of clusters
     kmeans_model.fit(scaled_data)
 
     attmpt["clusters"] = kmeans_model.labels_
-    attmpt.clusters.value_counts().reset_index()#.duplicated(subset=['clusters'])#.iloc[0,0]
-    
+    attmpt.clusters.value_counts().reset_index()  # .duplicated(subset=['clusters'])#.iloc[0,0]
+
     return attmpt
+
 
 ##selection of rows related to most abundant clusters
 
-def get_selection(attmpt:pd.DataFrame)->pd.DataFrame:
-    
+
+def get_selection(attmpt: pd.DataFrame) -> pd.DataFrame:
+
     cluster_stat = attmpt.clusters.value_counts().to_dict()
     cluster_count = list(cluster_stat.values())
-    cluster_non_equal = cluster_count[0]>cluster_count[1]
+    cluster_non_equal = cluster_count[0] > cluster_count[1]
     if cluster_non_equal:
         target_cluster = list(cluster_stat.keys())[0]
         mask = attmpt.clusters == target_cluster
         data_grol = attmpt.loc[mask]
-    else: 
-        print('equal cluster')
+    else:
+        print("equal cluster", end="")
         data_grol = pd.DataFrame()
     return data_grol
+
+
+def get_gdf_dataset(
+    gdf: gpd.GeoDataFrame, non_forest: gpd.GeoDataFrame, threshold: float = 80
+):
+    rename = {
+        "SOS_PRC": "С",
+        "OS_PRC": "ОС",
+        "BER_PRC": "Б",
+        "PICH_PRC": "П",
+        "EL_PRC": "Е",
+        "KEDR_PRC": "К",
+        "LSTV_PRC": "Л",
+    }
+
+    code_class = {"С": 7, "ОС": 5, "Б": 1, "П": 6, "Е": 2, "К": 3, "Л": 4}
+
+    target_cols = [
+        "EL_PRC",
+        "KEDR_PRC",
+        "LSTV_PRC",
+        "PICH_PRC",
+        "SOS_PRC",
+        "BER_PRC",
+        "OS_PRC",
+    ]
+
+    mask = gdf[target_cols] > threshold
+    select = gdf.loc[mask.any(axis=1)].copy()
+    t = select.loc[:, target_cols].idxmax(axis=1)
+    select.loc[:, "t"] = select.loc[:, target_cols].idxmax(axis=1)
+    select.loc[:, "t_Клас"] = select["t"].apply(lambda x: rename[x])
+    select.loc[:, "t_Class"] = select["t_Клас"].apply(lambda x: code_class[x])
+    select.pop("t")
+    non_forest[select.columns[:-3]] = 1
+    select = pd.concat([select, non_forest[select.columns]])
+    return select
