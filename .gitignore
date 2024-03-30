@@ -1,5 +1,5 @@
 shape_data/*
-
+models/best_models
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
