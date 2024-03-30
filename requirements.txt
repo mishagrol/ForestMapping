@@ -1,0 +1,11 @@
+notebook==6.4.8
+
+pandas
+requests
+geopandas
+scikit-learn
+scipy
+seaborn
+rasterio
+ipython
+# jupyter<6.4.*
