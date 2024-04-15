@@ -45,12 +45,26 @@ from scipy.stats import loguniform
 
 
 class Dataset:
-    def __init__(self):
+    def __init__(self, path_to_tiff_file: str):
         self.dates_images = []
         self.scale = 1.0
         self.terrain_cols = ["aspect", "slope", "wetnessindex", "sink"]
         self.cols = self.get_all_cols()
-        self.path_to_tiff_file = None
+        self.path_to_tiff_file = path_to_tiff_file
+        self.texture_columns = [
+            "ASM1",
+            "ASM2",
+            "contrast1",
+            "contrast2",
+            "correlation1",
+            "correlation2",
+            "dissimilarity1",
+            "dissimilarity2",
+            "energy1",
+            "energy2",
+            "homogeneity1",
+            "homogeneity2",
+        ]
 
     def download_dataset(self):
         filename = "../rasters/bands_and_terrain.tiff"
@@ -205,7 +219,7 @@ class Dataset:
 
     def get_dataset(
         self, gdf: gpd.GeoDataFrame, scale: float = 1.0
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """Get dataset for classification
 
         Args:
@@ -254,7 +268,21 @@ class Dataset:
         df_terrain.loc[mask, "wetnessindex"] = 0
         # for col in self.terrain_cols:
         #     df_terrain.loc[:, col] = self.normalize(df_terrain[col])
-        return df_indices_field, df_terrain
+
+        print("Start preparing texture")
+        df_texture = pd.DataFrame(columns=[*self.texture_columns, "key", "class"])
+        for invent_plot_data in gdf.iterrows():
+            inv_dict = invent_plot_data[1].to_dict()
+            if inv_dict["t_Class"] < 8:
+                df = self.get_texture_by_shape(inv_dict, self.scale)
+            else:
+                df = self.get_texture_by_shape(inv_dict, 1.0)
+            self._texture_point = df
+            df_texture = pd.concat([df_texture, df])
+
+        print(" -- Done ✅")
+
+        return df_indices_field, df_terrain, df_texture
 
     def get_SVI(self, df: pd.DataFrame) -> pd.DataFrame:
         nir = df.loc[:, "B08"]
@@ -311,13 +339,45 @@ class Dataset:
         src = rio.open(self.path_to_tiff_file)
 
         out_image, _ = crop_mask(src, [shape], all_touched=True, crop=True)
+        self._out_image = out_image
         s2 = out_image[2, ...]
-        sub_m = np.where(s2 > 0, out_image[-4:, ...], -1)
-        x = sub_m[-4:, ...].reshape(
+        sub_m = np.where(s2 > 0, out_image[16:20, ...], -1)
+        self._sub_m = sub_m
+        x = sub_m.reshape(
             len(self.terrain_cols), out_image.shape[1] * out_image.shape[2]
         )
 
         df = pd.DataFrame(x.T, columns=self.terrain_cols)
+        mask = df.max(axis=1) == -1
+        df = df.loc[~mask]
+        df.loc[:, "key"] = invent_plot_data["key"]
+        df.loc[:, "class"] = invent_plot_data["t_Class"]
+
+        return df
+
+    def get_texture_by_shape(
+        self, invent_plot_data: dict, scale: float
+    ) -> pd.DataFrame:
+        """
+        Get texture features from geotiff by polygon mask
+
+        Input: (Polygon) - shape
+
+        Output: (pd.DataFrame) - df with texture, key, class
+
+        """
+
+        shape = invent_plot_data["geometry"]
+        shape = self.scale_geom(shape=shape, scale=scale)
+        src = rio.open(self.path_to_tiff_file)
+
+        out_image, _ = crop_mask(src, [shape], all_touched=True, crop=True)
+        s2 = out_image[2, ...]
+        sub_m = np.where(s2 > 0, out_image[20:32, ...], -1)
+        x = sub_m.reshape(
+            len(self.texture_columns), out_image.shape[1] * out_image.shape[2]
+        )
+        df = pd.DataFrame(x.T, columns=self.texture_columns)
         mask = df.max(axis=1) == -1
         df = df.loc[~mask]
         df.loc[:, "key"] = invent_plot_data["key"]

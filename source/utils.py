@@ -34,8 +34,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import make_scorer
 
-from imblearn.over_sampling import SMOTE
-from imblearn.combine import SMOTEENN, SMOTETomek
+# from imblearn.over_sampling import SMOTE
+# from imblearn.combine import SMOTEENN, SMOTETomek
 from yellowbrick.cluster import KElbowVisualizer
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from scipy.stats import loguniform
@@ -44,12 +44,27 @@ from scipy.stats import loguniform
 
 
 class Dataset:
-    def __init__(self):
+    def __init__(self, path_to_tiff_file: str):
         self.dates_images = []
         self.scale = 1.0
         self.terrain_cols = ["aspect", "slope", "wetnessindex", "sink"]
         self.cols = self.get_all_cols()
-        self.path_to_tiff_file = None
+        self.path_to_tiff_file = path_to_tiff_file
+
+        self.texture_columns = [
+            "ASM1"
+            "ASM2"
+            "contrast1"
+            "contrast2"
+            "correlation1"
+            "correlation2"
+            "dissimilarity1"
+            "dissimilarity2"
+            "energy1"
+            "energy2"
+            "homogeneity1"
+            "homogeneity2"
+        ]
 
     def download_dataset(self):
         filename = "../rasters/bands_and_terrain.tiff"
@@ -202,7 +217,7 @@ class Dataset:
 
     def get_dataset(
         self, gdf: gpd.GeoDataFrame, scale: float = 1.0
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """Get dataset for classification
 
         Args:
@@ -250,8 +265,24 @@ class Dataset:
         mask = df_terrain["wetnessindex"] < 0
         df_terrain.loc[mask, "wetnessindex"] = 0
         for col in self.terrain_cols:
-            df_terrain.loc[:, col] = self.normalize(df_terrain[col])
-        return df_indices_field, df_terrain
+            df_terrain.loc[:, col] = self.normalize(df_terrain.loc[:, col])
+
+        print("Start preparing texture")
+        df_texture = pd.DataFrame(columns=[*self.texture_columns, "key", "class"])
+        for invent_plot_data in gdf.iterrows():
+            inv_dict = invent_plot_data[1].to_dict()
+            if inv_dict["t_Class"] < 8:
+                df = self.get_terrain_by_shape(inv_dict, self.scale)
+            else:
+                df = self.get_terrain_by_shape(inv_dict, 1.0)
+            self._texture_point = df
+            df_texture = pd.concat([df_texture, df])
+
+        print(" -- Done ✅")
+
+        for col in self.texture_columns:
+            df_texture.loc[:, col] = self.normalize(df_texture[col])
+        return df_indices_field, df_terrain, df_texture
 
     def get_SVI(self, df: pd.DataFrame) -> pd.DataFrame:
         nir = df.loc[:, "B08"]
@@ -290,6 +321,36 @@ class Dataset:
         df[self.cols] = self.normalize_pixel(df[self.cols].values)
         return df
 
+    def get_texture_by_shape(
+        self, invent_plot_data: dict, scale: float
+    ) -> pd.DataFrame:
+        """
+        Get texture features from geotiff by polygon mask
+
+        Input: (Polygon) - shape
+
+        Output: (pd.DataFrame) - df with texture, key, class
+
+        """
+
+        shape = invent_plot_data["geometry"]
+        shape = self.scale_geom(shape=shape, scale=scale)
+        src = rio.open(self.path_to_tiff_file)
+
+        out_image, _ = crop_mask(src, [shape], all_touched=True, crop=True)
+        s2 = out_image[2, ...]
+        sub_m = np.where(s2 > 0, out_image[20:32, ...], -1)
+        x = sub_m[20:32, ...].reshape(
+            len(self.texture_columns), out_image.shape[1] * out_image.shape[2]
+        )
+        df = pd.DataFrame(x.T, columns=self.texture_columns)
+        mask = df.max(axis=1) == -1
+        df = df.loc[~mask]
+        df.loc[:, "key"] = invent_plot_data["key"]
+        df.loc[:, "class"] = invent_plot_data["t_Class"]
+
+        return df
+
     def get_terrain_by_shape(
         self, invent_plot_data: dict, scale: float
     ) -> pd.DataFrame:
@@ -308,8 +369,8 @@ class Dataset:
 
         out_image, _ = crop_mask(src, [shape], all_touched=True, crop=True)
         s2 = out_image[2, ...]
-        sub_m = np.where(s2 > 0, out_image[-4:, ...], -1)
-        x = sub_m[-4:, ...].reshape(
+        sub_m = np.where(s2 > 0, out_image[16:20, ...], -1)
+        x = sub_m[16:20, ...].reshape(
             len(self.terrain_cols), out_image.shape[1] * out_image.shape[2]
         )
 
@@ -669,54 +730,62 @@ def get_models(class_weights: dict) -> list:
 
 # attaching clusters to each row according to the number of plot
 # attaching clusters to each row according to the number of plot
-def get_cluster_pixels(data:pd.DataFrame, key: int = 1, correlation_threshold:float=0.7)->pd.DataFrame: 
+def get_cluster_pixels(
+    data: pd.DataFrame, key: int = 1, correlation_threshold: float = 0.7
+) -> pd.DataFrame:
     attmpt = data[data.key == key]
-    attmpt_c = attmpt.drop(columns = ['key', 'class']).corr().abs() #'index',
-    #attmpt.corr().style.background_gradient(cmap="Blues")
+    attmpt_c = attmpt.drop(columns=["key", "class"]).corr().abs()  #'index',
+    # attmpt.corr().style.background_gradient(cmap="Blues")
 
     # Select upper triangle of correlation matrix
     upper = attmpt_c.where(np.triu(np.ones(attmpt_c.shape), k=1).astype(bool))
 
     # Find features with correlation greater than 0.95
-    to_drop = [column for column in upper.columns if any(upper[column] > correlation_threshold)]
+    to_drop = [
+        column for column in upper.columns if any(upper[column] > correlation_threshold)
+    ]
 
-    # Drop features 
-    attmpt_ = attmpt.drop(to_drop, axis=1)#, inplace=True)
+    # Drop features
+    attmpt_ = attmpt.drop(to_drop, axis=1)  # , inplace=True)
 
-    #preprocessing of the data
-    #from sklearn.preprocessing import StandardScaler
+    # preprocessing of the data
+    # from sklearn.preprocessing import StandardScaler
     scaler = StandardScaler()
-    scaler.fit(attmpt_.drop(columns = ['key', 'class']))#'index',
-    scaled_data = scaler.transform(attmpt_.drop(columns = ['key', 'class']))#'index',
-    #from yellowbrick.cluster import KElbowVisualizer
+    scaler.fit(attmpt_.drop(columns=["key", "class"]))  #'index',
+    scaled_data = scaler.transform(attmpt_.drop(columns=["key", "class"]))  #'index',
+    # from yellowbrick.cluster import KElbowVisualizer
     model = KMeans(n_init=10)
     # k is range of number of clusters.
-    visualizer = KElbowVisualizer(model, k=(1,8), timings= True)
-    visualizer.fit(scaled_data)        # Fit data to visualizer
+    visualizer = KElbowVisualizer(model, k=(1, 8), timings=True)
+    visualizer.fit(scaled_data)  # Fit data to visualizer
     plt.close()
     elbow_value = visualizer.elbow_value_
     if elbow_value == None:
         elbow_value = 2
-    kmeans_model = KMeans(n_clusters = elbow_value, random_state=100) # elbow_value_ == number of clusters
+    kmeans_model = KMeans(
+        n_clusters=elbow_value, random_state=100
+    )  # elbow_value_ == number of clusters
     kmeans_model.fit(scaled_data)
 
     attmpt["clusters"] = kmeans_model.labels_
-    attmpt.clusters.value_counts().reset_index()#.duplicated(subset=['clusters'])#.iloc[0,0]
-    
+    attmpt.clusters.value_counts().reset_index()  # .duplicated(subset=['clusters'])#.iloc[0,0]
+
     return attmpt
+
 
 ##selection of rows related to most abundant clusters
 
-def get_selection(attmpt:pd.DataFrame)->pd.DataFrame:
-    
+
+def get_selection(attmpt: pd.DataFrame) -> pd.DataFrame:
+
     cluster_stat = attmpt.clusters.value_counts().to_dict()
     cluster_count = list(cluster_stat.values())
-    cluster_non_equal = cluster_count[0]>cluster_count[1]
+    cluster_non_equal = cluster_count[0] > cluster_count[1]
     if cluster_non_equal:
         target_cluster = list(cluster_stat.keys())[0]
         mask = attmpt.clusters == target_cluster
         data_grol = attmpt.loc[mask]
-    else: 
-        print('equal cluster')
+    else:
+        print("equal cluster")
         data_grol = pd.DataFrame()
     return data_grol
