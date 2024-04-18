@@ -118,7 +118,7 @@ def get_predictions(
         cv=cv,
         scoring="f1_weighted",
         verbose=verbose,
-        n_jobs=10,
+        n_jobs=1,
     )
 
     if label_encoder is True:
@@ -260,7 +260,7 @@ def get_random_forest():
         "min_samples_leaf": min_samples_leaf,
     }
     return {
-        "model": RandomForestClassifier(bootstrap=True, n_jobs=4),
+        "model": RandomForestClassifier(bootstrap=True, n_jobs=1),
         "grid": random_grid,
     }
 
@@ -289,7 +289,7 @@ def get_XGB():
         "n_estimators": np.arange(10, 100, 20),
         "colsample_bytree": [0.3, 0.7, 1],
     }
-    return {"model": xgb.XGBClassifier(n_jobs=8), "grid": params}
+    return {"model": xgb.XGBClassifier(n_jobs=1), "grid": params}
 
 
 def model_loop(df_forest, model, settings, smote_balance, problems, verbose: int = 0):
@@ -306,7 +306,7 @@ def model_loop(df_forest, model, settings, smote_balance, problems, verbose: int
         _type_: _description_
     """
     local_datavector = []
-    for i in range(5):
+    for i in range(15):
         print(f"---- {model} ---- {i}")
         try:
             trained_model = get_predictions(
@@ -317,7 +317,7 @@ def model_loop(df_forest, model, settings, smote_balance, problems, verbose: int
                 to_remove_columns=["key"],
                 smote_balance=smote_balance,
                 cv=5,
-                n_iter_search=10,
+                n_iter_search=30,
                 label_encoder=True if model == "XGB" else False,
                 verbose=verbose,
             )
@@ -337,49 +337,52 @@ def model_loop(df_forest, model, settings, smote_balance, problems, verbose: int
     return local_datavector, problems
 
 
-def main():
+def main(scale: int):
     """main"""
     folder = "../shape_data/filtered_datasets_2024/"
-    datasets = os.listdir(folder)
 
     metric_container = pd.DataFrame()
-    problems = []
-    for dataset in sorted(datasets):
-        scale = dataset[2]
-        df_scaled, min_max_scaler = get_scaled_data(os.path.join(folder, dataset))
-        mask_forest = df_scaled["class"] < 10
-        df_forest = df_scaled.loc[mask_forest]
-        models = {
-            "RandomForest": get_random_forest(),
-            "SVC": get_svm(),
-            "kNN": get_KNN(),
-            "XGB": get_XGB(),
-        }
-        for model, settings in models.items():
-            for smote_balance in [True, False]:
-                print(model, scale, smote_balance)
-                datavector, problems = model_loop(
-                    df_forest, model, settings, smote_balance, problems, verbose=0
-                )
-                model_metrics = get_classes_metrics(datavector)
-                model_metrics["model"] = model
-                model_metrics["smote_balance"] = smote_balance
-                model_metrics["scale"] = scale
-                model_metrics["fname"] = dataset
-                model_metrics["experiment_status"] = dataset
-                metric_container = pd.concat([metric_container, model_metrics], axis=0)
-                best_model = get_best_model(datavector)
-                core = dataset.split(".")[0]
-                model_path = os.path.join(
-                    f"../models/best_models/{model}_{core}.joblib"
-                )
-                dump(best_model, model_path)
-            metric_container.to_csv("../shape_data/metric_results_v3_2024_SHORT.csv")
+    problems: list = []
+    dataset = os.path.join(folder, f"df{scale}_filtered_modified.csv")
+    df_scaled, min_max_scaler = get_scaled_data(os.path.join(folder, dataset))
+    scaler_path = os.path.join(f"../models/best_models/scaler_dataset_{scale}.joblib")
+    dump(min_max_scaler, scaler_path)
+    mask_forest = df_scaled["class"] < 10
+    df_forest = df_scaled.loc[mask_forest]
+    models = {
+        "RandomForest": get_random_forest(),
+        "SVC": get_svm(),
+        "kNN": get_KNN(),
+        "XGB": get_XGB(),
+    }
+    for model, settings in models.items():
+        for smote_balance in [True, False]:
+            print(model, scale, smote_balance)
+            datavector, problems = model_loop(
+                df_forest, model, settings, smote_balance, problems, verbose=0
+            )
+            model_metrics = get_classes_metrics(datavector)
+            model_metrics["model"] = model
+            model_metrics["smote_balance"] = smote_balance
+            model_metrics["scale"] = scale
+            model_metrics["fname"] = dataset
+            model_metrics["experiment_status"] = dataset
+            metric_container = pd.concat([metric_container, model_metrics], axis=0)
+            best_model = get_best_model(datavector)
+            core = dataset.split(".")[0]
+            model_path = os.path.join(f"../models/best_models/{model}_{core}.joblib")
+            dump(best_model, model_path)
+        metric_container.to_csv(f"../shape_data/metric_results_scale_{scale}.csv")
 
 
 if __name__ == "__main__":
     import logging
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--scale", type=int)
+    args = parser.parse_args()
 
     logging.info("Start")
-    main()
+    main(scale=args.scale)
     logging.info("Done ✅")
