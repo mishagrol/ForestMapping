@@ -375,3 +375,11 @@ def main():
                 )
                 dump(best_model, model_path)
             metric_container.to_csv("../shape_data/metric_results_v3_2024.csv")
+
+
+if __name__ == "__main__":
+    import logging
+
+    logging.info("Start")
+    main()
+    logging.info("Done ✅")
