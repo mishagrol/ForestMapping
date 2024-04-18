@@ -344,7 +344,7 @@ def main(scale: int):
     metric_container = pd.DataFrame()
     problems: list = []
     dataset = os.path.join(folder, f"df{scale}_filtered_modified.csv")
-    df_scaled, min_max_scaler = get_scaled_data(os.path.join(folder, dataset))
+    df_scaled, min_max_scaler = get_scaled_data(dataset)
     scaler_path = os.path.join(f"../models/best_models/scaler_dataset_{scale}.joblib")
     dump(min_max_scaler, scaler_path)
     mask_forest = df_scaled["class"] < 10
