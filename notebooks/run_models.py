@@ -306,7 +306,7 @@ def model_loop(df_forest, model, settings, smote_balance, problems, verbose: int
         _type_: _description_
     """
     local_datavector = []
-    for i in range(15):
+    for i in range(5):
         print(f"---- {model} ---- {i}")
         try:
             trained_model = get_predictions(
@@ -317,7 +317,7 @@ def model_loop(df_forest, model, settings, smote_balance, problems, verbose: int
                 to_remove_columns=["key"],
                 smote_balance=smote_balance,
                 cv=5,
-                n_iter_search=40,
+                n_iter_search=10,
                 label_encoder=True if model == "XGB" else False,
                 verbose=verbose,
             )
@@ -374,7 +374,7 @@ def main():
                     f"../models/best_models/{model}_{core}.joblib"
                 )
                 dump(best_model, model_path)
-            metric_container.to_csv("../shape_data/metric_results_v3_2024.csv")
+            metric_container.to_csv("../shape_data/metric_results_v3_2024_SHORT.csv")
 
 
 if __name__ == "__main__":
