@@ -1,3 +1,4 @@
+.DS_Store
 .env
 shape_data/*
 models/best_models
