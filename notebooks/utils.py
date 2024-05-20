@@ -1,45 +1,43 @@
-import pandas as pd
-import geopandas as gpd
-import rasterio as rio
-from rasterio.mask import mask as crop_mask
-import os, wget
+import datetime as dt
+import os
 from collections import Counter
+from typing import Tuple
+
+import geopandas as gpd
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import rasterio as rio
+import seaborn as sns
+import wget
+from rasterio.mask import mask as crop_mask
+from scipy.stats import loguniform
+from shapely import affinity
 from shapely.geometry import box
 
-# from imblearn.under_sampling import RandomUnderSampler
-from tqdm.notebook import tqdm
-import seaborn as sns
-import matplotlib.pyplot as plt
-from typing import Tuple
-import datetime as dt
-
-from shapely import affinity
-from sklearn.cluster import KMeans
-
 # from sklearn.preprocessing import StandardScaler
-from sklearn import model_selection
-from sklearn.linear_model import LogisticRegression, RidgeClassifier
-from sklearn.svm import SVC
-from sklearn.neighbors import KNeighborsClassifier
+from sklearn import metrics, model_selection
+from sklearn.cluster import KMeans
 from sklearn.ensemble import (
-    RandomForestClassifier,
     ExtraTreesClassifier,
     GradientBoostingClassifier,
     IsolationForest,
+    RandomForestClassifier,
 )
+from sklearn.linear_model import LogisticRegression, RidgeClassifier
+from sklearn.metrics import accuracy_score, f1_score, make_scorer, roc_auc_score
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, train_test_split
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
-from sklearn import metrics
-from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
-from sklearn.metrics import make_scorer
+
+# from imblearn.under_sampling import RandomUnderSampler
+from tqdm.notebook import tqdm
 
 # from imblearn.over_sampling import SMOTE
 # from imblearn.combine import SMOTEENN, SMOTETomek
 from yellowbrick.cluster import KElbowVisualizer
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
-from scipy.stats import loguniform
 
 # from xgboost import XGBClassifier
 
@@ -730,7 +728,7 @@ def get_models(class_weights: dict) -> list:
                 "max_leaf_nodes": 52,
                 "learning_rate": 0.1202,
             }
-        )
+        ),
         #                    XGBClassifier(n_jobs=-1, tree_method='gpu_hist', predictor='gpu_predictor', booster='gblinear', eta=0.3, gamma='auto', max_depth=20)
     ]
 
