@@ -1,6 +1,7 @@
 .DS_Store
 .env
 shape_data/*
+!shape_data/filtered_datasets_2024
 models/best_models
 # Byte-compiled / optimized / DLL files
 __pycache__/

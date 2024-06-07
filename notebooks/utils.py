@@ -14,9 +14,7 @@ from rasterio.mask import mask as crop_mask
 from scipy.stats import loguniform
 from shapely import affinity
 from shapely.geometry import box
-
-# from sklearn.preprocessing import StandardScaler
-from sklearn import metrics, model_selection
+from sklearn import metrics
 from sklearn.cluster import KMeans
 from sklearn.ensemble import (
     ExtraTreesClassifier,
@@ -26,20 +24,12 @@ from sklearn.ensemble import (
 )
 from sklearn.linear_model import LogisticRegression, RidgeClassifier
 from sklearn.metrics import accuracy_score, f1_score, make_scorer, roc_auc_score
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.utils.class_weight import compute_class_weight
-
-# from imblearn.under_sampling import RandomUnderSampler
 from tqdm.notebook import tqdm
-
-# from imblearn.over_sampling import SMOTE
-# from imblearn.combine import SMOTEENN, SMOTETomek
 from yellowbrick.cluster import KElbowVisualizer
-
-# from xgboost import XGBClassifier
 
 
 class Dataset:
@@ -72,7 +62,7 @@ class Dataset:
             print("file downloaded")
             self.path_to_tiff_file = filename
             return filename
-        url = "https://storage.yandexcloud.net/skoltech/forestmapping/bands_and_terrain.tiff"
+        url = "https://storage.yandexcloud.net/skoltech/forestmapping/bands_and_terrain_texture.tiff"
         filename = wget.download(url, out="../rasters/")
         self.path_to_tiff_file = filename
         return filename
